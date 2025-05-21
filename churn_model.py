@@ -32,17 +32,18 @@ def update_predictions(df, model):
     X_pred = prediction_df[['attendance_pct', 'avg_grade', 'engagement_score']]
     prediction_df['predicted_churn'] = model.predict(X_pred)
 
-    # Merge predictions back into original dataframe
-    df.update(prediction_df)
+    # Merge predictions back into original dataframe using index alignment
+    df.loc[prediction_df.index, 'predicted_churn'] = prediction_df['predicted_churn']
     return df
 
 def churn_analysis(df):
     total_students = len(df)
-    predicted_churn = df['predicted_churn'].sum()
+    predicted_count = df['predicted_churn'].notna().sum()
+    predicted_churn = df['predicted_churn'].sum() if 'predicted_churn' in df.columns else 0
 
     print("\n--- Churn Prediction Summary ---")
     print(f"Total students: {total_students}")
-    print(f"Predicted churned students: {predicted_churn} ({predicted_churn / total_students:.2%})")
+    print(f"Predicted churned students: {int(predicted_churn)} out of {predicted_count} ({predicted_churn / predicted_count:.2%} if predicted_count > 0 else 'N/A')")
 
 if __name__ == "__main__":
     data_file = "data/student_churn_data.csv"
