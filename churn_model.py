@@ -4,7 +4,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.utils import resample
 
-
 def load_data(filepath):
     return pd.read_csv(filepath)
 
@@ -23,7 +22,7 @@ def balance_data(df):
 
 def train_churn_model(df):
     X = df[['attendance_pct', 'avg_grade', 'engagement_score']]
-    y = df['churned']
+    y = df['churned'].astype(int)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     model = RandomForestClassifier(random_state=42)
     model.fit(X_train, y_train)
@@ -41,10 +40,12 @@ def update_predictions(df, model):
     return df
 
 def churn_analysis(df):
-    total_students = len(df)
-    actual_churn = df['churned'].dropna().sum()
-    predicted_churn = df['predicted_churn'].sum()
-    accuracy = (df['churned'].dropna() == df['predicted_churn'].dropna()).mean()
+    df_clean = df.dropna(subset=['churned', 'predicted_churn'])
+    
+    total_students = len(df_clean)
+    actual_churn = df_clean['churned'].sum()
+    predicted_churn = df_clean['predicted_churn'].sum()
+    accuracy = (df_clean['churned'] == df_clean['predicted_churn']).mean()
 
     print("\n--- Churn Analysis Report ---")
     print(f"Total students: {total_students}")
@@ -56,14 +57,16 @@ if __name__ == "__main__":
     data_file = "data/student_churn_data.csv"
     df = load_data(data_file)
 
-    balanced_df = balance_data(df)
+    # Balance and train only on labeled data
+    labeled_df = df.dropna(subset=['churned'])
+    balanced_df = balance_data(labeled_df)
     model = train_churn_model(balanced_df)
 
-    # Update df with predicted churn
+    # Predict churn for all students (including unlabeled)
     df = update_predictions(df, model)
 
     # Save updated data with predictions
     df.to_csv("data/student_churn_data_with_predictions.csv", index=False)
 
-    # Generate churn analysis report
+    # Generate churn analysis only on labeled data
     churn_analysis(df)
