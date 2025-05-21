@@ -1,61 +1,69 @@
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.utils import resample
+
 
 def load_data(filepath):
     return pd.read_csv(filepath)
 
+def balance_data(df):
+    df = df.dropna(subset=['churned'])
+    df_majority = df[df.churned == 0]
+    df_minority = df[df.churned == 1]
+
+    df_minority_upsampled = resample(df_minority, 
+                                     replace=True, 
+                                     n_samples=len(df_majority), 
+                                     random_state=42)
+
+    df_balanced = pd.concat([df_majority, df_minority_upsampled])
+    return df_balanced
+
 def train_churn_model(df):
-    # Drop rows with missing features (but allow missing churn labels)
-    df = df.dropna(subset=['attendance_pct', 'avg_grade', 'engagement_score'])
-
-    # Only use rows with churn labels for training
-    train_df = df.dropna(subset=['churned'])
-    X = train_df[['attendance_pct', 'avg_grade', 'engagement_score']]
-    y = train_df['churned']
-
+    X = df[['attendance_pct', 'avg_grade', 'engagement_score']]
+    y = df['churned']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model = RandomForestClassifier(random_state=42)
     model.fit(X_train, y_train)
-
     y_pred = model.predict(X_test)
-    acc = accuracy_score(y_test, y_pred)
-    print(f"Model trained. Validation Accuracy: {acc:.2%}")
+
+    print("\n--- Model Evaluation ---")
+    print(confusion_matrix(y_test, y_pred))
+    print(classification_report(y_test, y_pred))
 
     return model
 
 def update_predictions(df, model):
-    # Predict churn only for rows where churned is missing
-    prediction_df = df[df['churned'].isna()].copy()
-    X_pred = prediction_df[['attendance_pct', 'avg_grade', 'engagement_score']]
-    prediction_df['predicted_churn'] = model.predict(X_pred)
-
-    # Merge predictions back into original dataframe using index alignment
-    df.loc[prediction_df.index, 'predicted_churn'] = prediction_df['predicted_churn']
+    X = df[['attendance_pct', 'avg_grade', 'engagement_score']]
+    df['predicted_churn'] = model.predict(X)
     return df
 
 def churn_analysis(df):
     total_students = len(df)
-    predicted_count = df['predicted_churn'].notna().sum()
-    predicted_churn = df['predicted_churn'].sum() if 'predicted_churn' in df.columns else 0
+    actual_churn = df['churned'].dropna().sum()
+    predicted_churn = df['predicted_churn'].sum()
+    accuracy = (df['churned'].dropna() == df['predicted_churn'].dropna()).mean()
 
-    print("\n--- Churn Prediction Summary ---")
+    print("\n--- Churn Analysis Report ---")
     print(f"Total students: {total_students}")
-    print(f"Predicted churned students: {int(predicted_churn)} out of {predicted_count} ({predicted_churn / predicted_count:.2%} if predicted_count > 0 else 'N/A')")
+    print(f"Actual churned students: {actual_churn} ({actual_churn/total_students:.2%})")
+    print(f"Predicted churned students: {predicted_churn} ({predicted_churn/total_students:.2%})")
+    print(f"Overall prediction accuracy: {accuracy:.2%}")
 
 if __name__ == "__main__":
     data_file = "data/student_churn_data.csv"
     df = load_data(data_file)
 
-    model = train_churn_model(df)
+    balanced_df = balance_data(df)
+    model = train_churn_model(balanced_df)
 
-    # Predict churn for unlabeled data
+    # Update df with predicted churn
     df = update_predictions(df, model)
 
-    # Save results
+    # Save updated data with predictions
     df.to_csv("data/student_churn_data_with_predictions.csv", index=False)
 
-    # Analysis
+    # Generate churn analysis report
     churn_analysis(df)
